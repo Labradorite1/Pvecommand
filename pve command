@@ -1,0 +1,251 @@
+        [Command("Pve")]
+        public async Task Pve([Remainder] string user = " ")
+        {
+
+            SocketUser target = null;
+            var mentionedUser = Context.Message.MentionedUsers.FirstOrDefault();
+            target = mentionedUser ?? Context.User;
+            var account = UserAccounts.GetAccount(target);
+            await Context.Channel.SendMessageAsync(user);
+
+            if (account.destinyMembershipId == null)
+            {
+                await Unregistered();
+            }
+
+            string destinyMembershipId = account.destinyMembershipId;
+            string membershipType = account.destinyMembershipType;
+            string characterId = "0";
+            List<string> characters = new List<string>();
+            characters.Add(account.character1);
+            characters.Add(account.character2);
+            characters.Add(account.character3);
+
+            await Context.Channel.SendMessageAsync("Thinking...");
+
+            int completedNightfalls = 0;
+
+            List<int> times = new List<int>();
+
+            foreach (var x in characters)
+            {
+                string mode1 = "16";
+                string mode2 = "17";
+                string mode3 = "46";
+                string mode4 = "47";
+                List<string> modes = new List<string>();
+                modes.Add(mode1);
+                modes.Add(mode2);
+                modes.Add(mode3);
+                modes.Add(mode4);
+
+                foreach (var mode in modes)
+                {
+                    int page = 0;
+                    bool done = false;
+                    while (done == false)
+                    {
+                        int totalNightfalls = 0;
+                        using (var client = new HttpClient())
+                        {
+                            client.DefaultRequestHeaders.Add("X-API-Key", apiKey);
+                            string link = apiSite + $"/Destiny2/{membershipType}/Account/{destinyMembershipId}/Character/{x}/Stats/Activities/?mode={mode}&count=250&page={page}";
+                            var response = await client.GetAsync(link);
+                            var content = await response.Content.ReadAsStringAsync();
+                            dynamic item = Newtonsoft.Json.JsonConvert.DeserializeObject(content);
+                            var activities = item.Response.activities;
+                            foreach (var activity in activities)
+                            {
+                                if (activity.values.activityDurationSeconds.basic.value == 314)
+                                {
+                                    Console.WriteLine(activity);
+                                }
+                                if (activity.values.completionReason.basic.displayValue != "Failed")
+                                {
+                                    if (activity.values.completed.basic.displayValue == "Yes")
+                                    {
+                                        completedNightfalls++;
+                                        totalNightfalls++;
+                                        int timesValue = activity.values.activityDurationSeconds.basic.value;
+                                        times.Add(timesValue);
+                                    }
+                                    if (activity.values.completed.basic.displayValue == "No")
+                                    {
+                                        totalNightfalls++;
+                                    }
+                                }
+                                if (activity.values.completionReason.basic.displayValue == "Failed")
+                                {
+                                    totalNightfalls++;
+                                }
+                            }   
+                        }
+                        page++;
+                        if (totalNightfalls < 250)
+                        {
+                            done = true;
+                        }
+                    }
+                }
+            }
+
+            int tempFastestTime = 604800;
+            int fastestTime = 0;
+
+            foreach (var time in times)
+            {
+                if (tempFastestTime > time)
+                {
+                    fastestTime = time;
+                    tempFastestTime = time;
+                }
+            }
+
+            int fastestTimeMinutes = fastestTime / 60;
+            int fastestTimeMintesRemainder = fastestTime % 60;
+
+            string completedNightfallsText = completedNightfalls.ToString();
+
+            string totalPveTime = "";
+            string highestPower = "";
+            string publicEvents = "";
+            string totalStrikeTime = "";
+            string strikes = "";
+            string totalRaidTime = "";
+            string totalRaids = "";
+            using (var client = new HttpClient())
+            {
+                client.DefaultRequestHeaders.Add("X-API-Key", apiKey);
+                string link = apiSite + $"/Destiny2/{membershipType}/Account/{destinyMembershipId}/Character/{characterId}/Stats/";
+                var response = await client.GetAsync(link);
+                var content = await response.Content.ReadAsStringAsync();
+                dynamic item = Newtonsoft.Json.JsonConvert.DeserializeObject(content);
+                string error = item.ErrorCode;
+                Console.WriteLine(error);
+                await Context.Channel.SendMessageAsync("Almost there...");
+
+                int patrolTime = item.Response.patrol.allTime.secondsPlayed.basic.value;
+                int raidTime = item.Response.raid.allTime.secondsPlayed.basic.value;
+                int storyTime = item.Response.story.allTime.secondsPlayed.basic.value;
+                int allStrikesTime = item.Response.allStrikes.allTime.secondsPlayed.basic.value;
+                int totalTime = patrolTime + raidTime + storyTime + allStrikesTime;
+
+                int totalDaysPlayed = totalTime / 86400;
+                int totalDaysPlayedRemainder = totalTime % 86400;
+
+                int totalHoursPlayed = totalDaysPlayedRemainder / 3600;
+                int totalHoursPlayedRemainder = totalDaysPlayedRemainder % 3600;
+
+                int totalMinutesPlayed = totalHoursPlayedRemainder / 60;
+                int totalMinutesPlayedRemainder = totalHoursPlayedRemainder % 60;
+
+                totalPveTime = $"{totalDaysPlayed}d {totalHoursPlayed}h {totalMinutesPlayed}m {totalMinutesPlayedRemainder}s";
+
+                int strikeDaysPlayed = allStrikesTime / 86400;
+                int strikeDaysPlayedRemainder = allStrikesTime % 86400;
+
+                int strikeHoursPlayed = strikeDaysPlayedRemainder / 3600;
+                int strikeHoursPlayedRemainder = strikeDaysPlayedRemainder % 3600;
+
+                int strikeMinutesPlayed = strikeHoursPlayedRemainder / 60;
+                int strikeMinutesPlayedRemainder = strikeHoursPlayed % 60;
+
+                totalStrikeTime = $"{strikeDaysPlayed}d {strikeHoursPlayed}h {strikeMinutesPlayed}m {strikeMinutesPlayedRemainder}s";
+                highestPower = item.Response.patrol.allTime.highestLightLevel.basic.displayValue;
+
+                int patrolPublicEvents = item.Response.patrol.allTime.publicEventsCompleted.basic.value;
+                int strikePublicEvents = item.Response.allStrikes.allTime.publicEventsCompleted.basic.value;
+                int totalPublicEvents = patrolPublicEvents + strikePublicEvents;
+
+                int heroicPatrolPublicEvents = item.Response.patrol.allTime.heroicPublicEventsCompleted.basic.value;
+                int heroicStrikePublicEvents = item.Response.allStrikes.allTime.heroicPublicEventsCompleted.basic.value;
+                int totalHeroicPublicEvents = heroicPatrolPublicEvents + heroicStrikePublicEvents;
+
+                int smallPercentageHeroicPublicEvents = 100000 / totalPublicEvents;
+                int percentageHeroicPublicEvents1 = smallPercentageHeroicPublicEvents * totalHeroicPublicEvents;
+                int percentageHeroicPublicEvents = percentageHeroicPublicEvents1 / 1000;
+
+
+                publicEvents = $"{totalPublicEvents} ({percentageHeroicPublicEvents}% Heroic)";
+
+                string totalStrikes = item.Response.allStrikes.allTime.activitiesCleared.basic.displayValue; //total time
+
+                string fastestStrike = item.Response.allStrikes.allTime.fastestCompletionMs.basic.displayValue; //fastest strike
+
+                strikes = $"{totalStrikes} ({fastestStrike})";
+
+                int raidDaysPlayed = raidTime / 86400;
+                int raidDaysPlayedRemainder = raidTime % 86400;
+
+                int raidHoursPlayed = raidDaysPlayedRemainder / 3600;
+                int raidHoursPlayedRemainder = raidDaysPlayedRemainder % 3600;
+
+                int raidMinutesPlayed = raidHoursPlayedRemainder / 60;
+                int raidMinutesPlayedRemainder = raidHoursPlayedRemainder % 60; //raid time 
+                totalRaidTime = $"{raidDaysPlayed}d {raidHoursPlayed}h {raidMinutesPlayed}m {raidMinutesPlayedRemainder}s";
+
+                totalRaids = item.Response.raid.allTime.activitiesCleared.basic.displayValue; //total raids 
+            }
+            string characterCount;
+            using (var client = new HttpClient())
+            {
+                client.DefaultRequestHeaders.Add("X-API-Key", apiKey);
+                string link = apiSite + $"/Destiny2/{membershipType}/Account/{destinyMembershipId}/Stats/";
+                var response = await client.GetAsync(link);
+                var content = await response.Content.ReadAsStringAsync();
+                dynamic item = Newtonsoft.Json.JsonConvert.DeserializeObject(content);
+                var characters1 = item.Response.characters;
+
+                int deletedCharacters = 0;
+                int activeCharacters = 0;
+                foreach (var character in characters1)
+                {
+                    string deleted = character.deleted;
+
+                    if (deleted == "True")
+                    {
+                        deletedCharacters++;
+                    }
+                    if (deleted == "False")
+                    {
+                        activeCharacters++;
+                    }
+                }
+                characterCount = $"{activeCharacters} / {deletedCharacters}";
+            }
+            string title = Utilities.GetFormattedAlert("PvE_Title");
+            string totalTimePlayedPve = Utilities.GetFormattedAlert("PvE_TotalTimePlayed");
+            string powerLevel = Utilities.GetFormattedAlert("PvE_PowerLevel");
+            string publicEventsCompleted = Utilities.GetFormattedAlert("PvE_PublicEventsCompleted");
+            string totalTimePlayedStrikes = Utilities.GetFormattedAlert("PvE_TotalTimePlayedStrikes");
+            string totalStrikesCompleted = Utilities.GetFormattedAlert("PvE_TotalStrikesCompleted");
+            string totalNightfallsCompleted = Utilities.GetFormattedAlert("PvE_TotalNightfallsCompleted");
+            string totalTimePlayedRaid = Utilities.GetFormattedAlert("PvE_TotalTimePlayedRaid");
+            string totalRaidsCompleted = Utilities.GetFormattedAlert("PvE_TotalRaidsCompleted");
+            string characterCountText = Utilities.GetFormattedAlert("PvE_CharacterCount");
+            var embed = new EmbedBuilder()
+                .WithTitle(title)
+                .AddInlineField(totalTimePlayedPve, totalPveTime)
+                .AddInlineField(powerLevel, highestPower)
+                .AddInlineField(publicEventsCompleted, publicEvents)
+                .AddInlineField(totalTimePlayedStrikes, totalStrikeTime)
+                .AddInlineField(totalStrikesCompleted, strikes)
+                .AddInlineField(totalNightfallsCompleted, completedNightfallsText + $" ({fastestTimeMinutes}m {fastestTimeMintesRemainder}s)")
+                .AddInlineField(totalTimePlayedRaid, totalRaidTime)
+                .AddInlineField(totalRaidsCompleted, totalRaids)
+                .AddInlineField(characterCountText, characterCount);
+            if (membershipType == "1")
+            {
+                embed.WithColor(0, 255, 0);
+            }
+            if (membershipType == "2")
+            {
+                embed.WithColor(0, 0, 255);
+            }
+            if (membershipType == "4")
+            {
+                embed.WithColor(255, 0, 0);
+            }
+
+            await Context.Channel.SendMessageAsync("", embed: embed);
+        }
